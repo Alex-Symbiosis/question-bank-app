@@ -553,6 +553,7 @@ Views.kb = {
   },
   mount() {
     const root = Q('#kb-page');
+    if (!root) return;
     root.addEventListener('click', (e) => {
       const act = e.target.closest('[data-kb-act]');
       if (act) {
@@ -766,6 +767,7 @@ Views.kbFocus = {
   },
   mount() {
     const root = Q('#focus-page');
+    if (!root) return;
     root.addEventListener('click', (e) => this.onClick(e));
     root.addEventListener('submit', (e) => this.onSubmit(e));
     this.onKey = (e) => {
