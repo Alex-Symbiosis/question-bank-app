@@ -1,6 +1,25 @@
 /* ============================================================
    应用外壳：hash 路由 + AI 抽屉 + 全局状态
    ============================================================ */
+/* 学习分组：二级导航配置。以后往学习频道里加东西，只改这里即可 */
+window.NAV_GROUPS = [
+  {
+    id: 'learn',
+    label: '学习',
+    items: [
+      { nav: 'learn', href: '#/learn', label: '学习频道' },
+      { nav: 'stats', href: '#/stats', label: '学习数据' },
+    ],
+  },
+];
+
+window.learnTabs = function (active) {
+  const g = (window.NAV_GROUPS || []).find((x) => x.id === 'learn');
+  if (!g) return '';
+  return `<div class="learn-switch">${g.items.map((it) =>
+    `<a href="${it.href}" class="${active === it.nav ? 'active' : ''}">${esc(it.label)}</a>`).join('')}</div>`;
+};
+
 window.App = {
   currentView: null,
   currentCtx: null,
@@ -18,9 +37,11 @@ window.App = {
     { re: /^\/exam\/result\/([^/]+)$/, name: 'examResult', view: () => Views.examResult, nav: 'home', keys: ['id'] },
     { re: /^\/wrong\/([^/]+)$/, name: 'wrong', view: () => Views.wrong, nav: 'mistakes', keys: ['id'] },
     { re: /^\/mistakes$/, name: 'mistakes', view: () => Views.mistakes, nav: 'mistakes' },
+    { re: /^\/favorites$/, name: 'favorites', view: () => Views.favorites, nav: 'favorites' },
     { re: /^\/papers$/, name: 'papers', view: () => Views.papers, nav: 'papers' },
     { re: /^\/learn$/, name: 'learn', view: () => Views.learn, nav: 'learn' },
     { re: /^\/learn\/import$/, name: 'kbImport', view: () => Views.kbImport, nav: 'learn' },
+    { re: /^\/stats$/, name: 'stats', view: () => Views.stats, nav: 'stats' },
     { re: /^\/kb\/([^/]+)$/, name: 'kb', view: () => Views.kb, nav: 'learn', keys: ['id'] },
     { re: /^\/kb\/([^/]+)\/focus$/, name: 'kbFocus', view: () => Views.kbFocus, nav: 'learn', keys: ['id'] },
     { re: /^\/papers\/new$/, name: 'paperNew', view: () => Views.paperNew, nav: 'papers' },
@@ -61,6 +82,8 @@ window.App = {
     const hit = this.resolve(path);
     const root = Q('#view');
     if (!root) return;
+    /* 只有真正换页才播放入场编排；数据刷新、标签重绘不重复触发 */
+    const entering = this._lastHash !== location.hash;
 
     if (this.currentView && Views[this.currentView] && typeof Views[this.currentView].destroy === 'function') {
       try { Views[this.currentView].destroy(); } catch (e) { /* 忽略清理错误 */ }
@@ -85,6 +108,7 @@ window.App = {
       root.classList.remove('route-enter');
       void root.offsetWidth;
       root.classList.add('route-enter');
+      if (entering) this.staggerCards(root);
     } catch (err) {
       console.error('[view]', err);
       root.innerHTML = `<div class="card" style="text-align:center;padding:56px">
@@ -99,6 +123,17 @@ window.App = {
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
     this.updateChrome(hit.route.nav);
+  },
+
+  /* 栏目卡片入场编排：列表容器的直接子项依次浮起，索引封顶后整批跟上 */
+  staggerCards(root) {
+    const boxes = QA('.bank-grid, .kb-grid, .grid-3, .paper-grid, .bank-pick-grid, .mistake-list, .kpi-grid, .acc-list, .cat-list, .usage-list, .mode-grid, .review-list', root);
+    boxes.forEach((box) => {
+      Array.prototype.forEach.call(box.children, (el, i) => {
+        el.style.setProperty('--sd', Math.min(i, 4) * 55 + 'ms');
+        el.classList.add('stagger-in');
+      });
+    });
   },
 
   updateChrome(nav) {
@@ -118,7 +153,10 @@ window.App = {
       badge.hidden = !total;
     }
     if (nav) {
-      QA('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav));
+      /* 学习数据属于「学习」入口：侧栏和移动端都保持学习项高亮 */
+      const groupNav = nav === 'stats' ? 'learn' : nav;
+      QA('#main-nav [data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === groupNav));
+      QA('#tabbar [data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === groupNav));
     }
   },
 };
@@ -370,6 +408,8 @@ window.AIUI = {
    ============================================================ */
 function bootApp() {
   Store.init();
+  const covered = window.Splash ? Splash.init() : false;
+  if (!covered) document.body.classList.remove('boot-pending');
   AIUI.init();
   if (window.Mentor) Mentor.init();
   window.addEventListener('hashchange', () => App.render());

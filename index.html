@@ -4,10 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>题库 · 本地智能学习</title>
+<style>
+  html, body { background: #050B11; color-scheme: dark; overflow-x: clip; }
+</style>
 <link rel="stylesheet" href="assets/css/theme.css" />
 <link rel="stylesheet" href="assets/css/views.css" />
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232C5A56'/%3E%3Cstop offset='1' stop-color='%234B6279'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='40' height='40' rx='11' fill='url(%23g)'/%3E%3Crect x='10.5' y='10' width='14' height='19' rx='2.6' fill='none' stroke='%23EAF2EF' stroke-opacity='.5' stroke-width='1.6'/%3E%3Crect x='16' y='13.5' width='14' height='18.5' rx='2.6' fill='%23FFFFFF' fill-opacity='.08' stroke='%23F7FBF9' stroke-width='1.6'/%3E%3Cpath d='M19.8 20h6.4M19.8 24h4.6' stroke='%23F7FBF9' stroke-opacity='.85' stroke-width='1.6' stroke-linecap='round'/%3E%3Ccircle cx='31.6' cy='10.4' r='2.3' fill='%23CFE6DA'/%3E%3C/svg%3E" />
-<meta name="theme-color" content="#2C5A56" />
+<meta name="theme-color" content="#050B11" />
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -15,7 +18,7 @@
 <meta name="apple-mobile-web-app-title" content="题库" />
 <link rel="apple-touch-icon" href="icons/icon-192.png" />
 </head>
-<body>
+<body class="boot-pending">
 <svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="mascotBody" x1="0" y1="0" x2="1" y2="1">
@@ -79,10 +82,11 @@
 
     <nav class="nav" id="main-nav">
       <a href="#/" data-nav="home"><svg class="i"><use href="#i-book"/></svg><span>我的题库</span></a>
-      <a href="#/learn" data-nav="learn"><svg class="i"><use href="#i-layers"/></svg><span>学习频道</span></a>
+      <a href="#/learn" data-nav="learn"><svg class="i"><use href="#i-layers"/></svg><span>学习</span></a>
       <a href="#/import" data-nav="import"><svg class="i"><use href="#i-upload"/></svg><span>导入题库</span></a>
       <a href="#/papers" data-nav="papers"><svg class="i"><use href="#i-list"/></svg><span>组卷</span></a>
       <a href="#/mistakes" data-nav="mistakes"><svg class="i"><use href="#i-brain"/></svg><span>错题本</span><i class="nav-badge" id="nav-wrong-badge" hidden></i></a>
+      <a href="#/favorites" data-nav="favorites"><svg class="i"><use href="#i-star"/></svg><span>收藏夹</span></a>
       <a href="#/usage" data-nav="usage"><svg class="i"><use href="#i-chart"/></svg><span>AI 用量</span></a>
       <a href="#/settings" data-nav="settings"><svg class="i"><use href="#i-settings"/></svg><span>设置</span></a>
     </nav>
@@ -106,6 +110,7 @@
   <a href="#/learn" data-nav="learn"><svg class="i"><use href="#i-layers"/></svg><span>学习</span></a>
   <a href="#/papers" data-nav="papers"><svg class="i"><use href="#i-list"/></svg><span>组卷</span></a>
   <a href="#/mistakes" data-nav="mistakes"><svg class="i"><use href="#i-brain"/></svg><span>错题本</span></a>
+  <a href="#/favorites" data-nav="favorites"><svg class="i"><use href="#i-star"/></svg><span>收藏</span></a>
   <a href="#/settings" data-nav="settings"><svg class="i"><use href="#i-settings"/></svg><span>设置</span></a>
 </nav>
 
@@ -152,8 +157,11 @@
 <script src="assets/js/views/misc.js" defer></script>
 <script src="assets/js/views/paper.js" defer></script>
 <script src="assets/js/views/kb.js" defer></script>
+<script src="assets/js/views/stats.js" defer></script>
 <script src="assets/js/mentor.js" defer></script>
 <script src="assets/js/views/settings.js" defer></script>
+<script src="assets/js/splash.js" defer></script>
+<script src="assets/js/glow.js" defer></script>
 <script src="assets/js/app.js" defer></script>
 <script>
 /* Service Worker 注册 — file:// 协议下 SW 不生效，浏览器本身缓存足够离线 */

@@ -8,6 +8,8 @@ Views.bank = {
     const bank = Store.banks.get(ctx.params.id);
     if (!bank) return `<div class="card">${emptyState({ title: '题库不存在', desc: '它可能已被删除。', action: { href: '#/', label: '返回题库列表' } })}</div>`;
     Store.setLastBank(bank.id);
+    this.focusQid = ctx.query.q || '';
+    if (this.focusQid) { this.filter = 'all'; this.keyword = ''; }
     this.limit = 30;
 
     const total = bank.questions.length;
@@ -182,6 +184,19 @@ Views.bank = {
         renderList();
       };
     });
+    /* 从全局搜索定位到某道题：必要时扩容列表，滚动并短暂高亮 */
+    if (self.focusQid) {
+      const idx = bank.questions.findIndex((q) => q.id === self.focusQid);
+      if (idx >= self.limit) { self.limit = idx + 5; renderList(); }
+      setTimeout(() => {
+        const row = Q(`.q-row[data-qid="${self.focusQid}"]`);
+        if (!row) return;
+        row.classList.add('is-focus');
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        setTimeout(() => row.classList.remove('is-focus'), 2400);
+      }, 140);
+    }
+
     const search = Q('#bank-search');
     search.oninput = debounce(() => { self.keyword = search.value; renderList(); }, 180);
 

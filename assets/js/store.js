@@ -24,6 +24,7 @@ window.Store = (function () {
       wrongAutoAdd: true,
       shuffleOptions: false,
       showTimer: true,
+      splash: true, // 启动封面与今日问候
     },
     usage: {
       limit: 100, // 保留最近多少条 AI 调用记录
@@ -144,6 +145,17 @@ window.Store = (function () {
 
   function save() { persist(); emit(); }
 
+  /* 收藏只保留仍存在的题目：删题、删库、合并或导入旧备份后都不会留下死链 */
+  function normalizeFavorites() {
+    if (!Array.isArray(state.favorites)) state.favorites = [];
+    const seen = new Set();
+    state.favorites = state.favorites.filter((qid) => {
+      if (typeof qid !== 'string' || !qid || seen.has(qid)) return false;
+      seen.add(qid);
+      return !!questionById(qid);
+    });
+  }
+
   function init() {
     let raw = null;
     try { raw = localStorage.getItem(KEY); } catch (e) { console.warn('localStorage 不可用', e); }
@@ -170,6 +182,7 @@ window.Store = (function () {
     if (!Array.isArray(state.kbs)) state.kbs = [];
     if (!state.kbSessions || typeof state.kbSessions !== 'object') state.kbSessions = {};
     state.progress = normalizeProgress(state.progress);
+    normalizeFavorites();
     if (!state.profile || typeof state.profile !== 'object') {
       state.profile = { text: '', onboarded: false, updatedAt: 0 };
     }
@@ -319,6 +332,7 @@ window.Store = (function () {
       if (!b) return;
       b.questions = b.questions.filter((x) => x.id !== qid);
       delete state.wrong[qid];
+      state.favorites = state.favorites.filter((x) => x !== qid);
       b.updatedAt = Date.now();
       save();
     },
@@ -540,13 +554,73 @@ window.Store = (function () {
       s.answered += 1;
       if (correct) s.correct += 1;
       const day = todayKey();
-      s.days[day] = (s.days[day] || 0) + 1;
+      const prev = s.days[day];
+      let cell;
+      if (prev && typeof prev === 'object') {
+        cell = prev;
+      } else {
+        /* 兼容旧数据：只有当天总量、没有对错明细，正确率分母先排除这部分 */
+        const n = Number(prev) || 0;
+        cell = { answered: n, correct: 0, unknown: n };
+      }
+      cell.answered += 1;
+      if (correct) cell.correct += 1;
+      s.days[day] = cell;
       if (qid) s.mastered[qid] = !!correct;
       save();
     },
+    dayKey(offset) {
+      const d = new Date();
+      d.setDate(d.getDate() - (offset || 0));
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    },
     todayCount() {
       const day = todayKey();
-      return Object.values(state.stats).reduce((sum, s) => sum + ((s.days && s.days[day]) || 0), 0);
+      return Object.values(state.stats).reduce((sum, s) => {
+        const c = s.days && s.days[day];
+        return sum + (c && typeof c === 'object' ? (c.answered || 0) : (Number(c) || 0));
+      }, 0);
+    },
+    /* 近 N 天汇总（含今天）；accuracy 只在有对错明细时返回 */
+    range(days) {
+      const keys = {};
+      for (let i = 0; i < days; i++) keys[stats.dayKey(i)] = true;
+      let answered = 0, correct = 0, known = 0;
+      Object.values(state.stats).forEach((s) => {
+        const d = s.days || {};
+        Object.keys(d).forEach((k) => {
+          if (!keys[k]) return;
+          const c = d[k];
+          if (c && typeof c === 'object') {
+            answered += c.answered || 0;
+            correct += c.correct || 0;
+            known += Math.max(0, (c.answered || 0) - (c.unknown || 0));
+          } else {
+            answered += Number(c) || 0;
+          }
+        });
+      });
+      return { answered, correct, known, accuracy: known ? Math.round((correct / known) * 100) : null };
+    },
+    series(n) {
+      const out = [];
+      for (let i = n - 1; i >= 0; i--) {
+        const key = stats.dayKey(i);
+        let answered = 0, correct = 0, known = 0;
+        Object.values(state.stats).forEach((s) => {
+          const c = (s.days || {})[key];
+          if (!c) return;
+          if (c && typeof c === 'object') {
+            answered += c.answered || 0;
+            correct += c.correct || 0;
+            known += Math.max(0, (c.answered || 0) - (c.unknown || 0));
+          } else {
+            answered += Number(c) || 0;
+          }
+        });
+        out.push({ day: key, answered, accuracy: known ? Math.round((correct / known) * 100) : null });
+      }
+      return out;
     },
     totalAnswered() {
       return Object.values(state.stats).reduce((sum, s) => sum + (s.answered || 0), 0);
@@ -555,6 +629,10 @@ window.Store = (function () {
       const s = stats.of(bankId);
       if (!s.answered) return null;
       return Math.round((s.correct / s.answered) * 100);
+    },
+    answeredOf(bankId) {
+      const s = state.stats[bankId];
+      return s ? (s.answered || 0) : 0;
     },
     masteredCount(bankId) {
       const s = stats.of(bankId);
@@ -641,7 +719,14 @@ window.Store = (function () {
       return i < 0;
     },
     has: (qid) => state.favorites.includes(qid),
-    list: () => state.favorites.filter((qid) => !!questionById(qid)),
+    list() {
+      const seen = new Set();
+      return state.favorites.filter((qid) => {
+        if (seen.has(qid)) return false;
+        seen.add(qid);
+        return !!questionById(qid);
+      });
+    },
   };
 
   /* ---------- 人物画像 ---------- */
@@ -816,6 +901,7 @@ window.Store = (function () {
     state.settings = mergeSettings(data.settings);
     state.mentor = normalizeMentor(data.mentor);
     state.progress = normalizeProgress(data.progress);
+    normalizeFavorites();
     save();
     return state;
   }

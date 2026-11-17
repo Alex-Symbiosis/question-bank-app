@@ -136,11 +136,25 @@
   Views.paperNew = {
     render(ctx) {
       const from = ctx.query.from || '';
-      if (!D || (D.fromId || '') !== from) {
-        const p = from ? Store.papers.get(from) : null;
+      const fav = ctx.query.fav || '';
+      const draftKey = fav ? 'fav:' + fav : from;
+      if (!D || (D.fromId || '') !== draftKey) {
+        const p = !fav && from ? Store.papers.get(from) : null;
         D = blankDraft();
-        D.fromId = from;
-        if (p) {
+        D.fromId = draftKey;
+        if (fav) {
+          /* 从收藏夹带入：fav=1 全部收藏，fav=<bankId> 只带入该题库的收藏 */
+          const ids = Store.favorites.list().filter((qid) => {
+            if (fav === '1') return true;
+            const b = Store.bankOfQuestion(qid);
+            return !!b && b.id === fav;
+          });
+          D.sel = new Set(ids);
+          D.bankIds = [...new Set(ids.map((qid) => (Store.bankOfQuestion(qid) || {}).id).filter(Boolean))];
+          D.source = 'favorites';
+          const one = fav === '1' ? null : Store.banks.get(fav);
+          D.title = one ? one.title + ' · 收藏题目' : '收藏题目练习卷';
+        } else if (p) {
           D.id = p.id; D.title = p.title; D.subtitle = p.subtitle || '';
           D.bankIds = (p.bankIds || []).slice();
           D.note = p.note || '';
@@ -174,6 +188,13 @@
           <button class="btn btn-primary" id="paper-save">保存试卷</button>
         </div>
       </div>
+
+      ${D.source === 'favorites' ? `<div class="card" style="margin-bottom:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="chip amber">收藏带入</span>
+        <span class="small muted">已带入 ${D.sel.size} 道收藏题，可继续增减；改动只影响这份试卷。</span>
+        <span class="grow"></span>
+        <a class="btn btn-quiet btn-sm" href="#/favorites">返回收藏夹</a>
+      </div>` : ''}
 
       <div class="card set-group">
         <h3>${icon('pen')} 卷头信息</h3>

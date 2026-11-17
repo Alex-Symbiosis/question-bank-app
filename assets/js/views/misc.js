@@ -173,6 +173,112 @@ Views.mistakes = {
 };
 
 /* ============================================================
+   收藏夹
+   ============================================================ */
+Views.favorites = {
+  render() {
+    const ids = Store.favorites.list();
+    const groups = [];
+    const map = new Map();
+    ids.forEach((qid) => {
+      const q = Store.questionById(qid);
+      const bank = Store.bankOfQuestion(qid);
+      if (!q || !bank) return;
+      let g = map.get(bank.id);
+      if (!g) { g = { bank, list: [] }; map.set(bank.id, g); groups.push(g); }
+      g.list.push(q);
+    });
+
+    const total = groups.reduce((n, g) => n + g.list.length, 0);
+    const objective = groups.reduce((n, g) => n + g.list.filter((q) => q.type === 'single' || q.type === 'multiple' || q.type === 'judge').length, 0);
+    const subjective = total - objective;
+
+    if (!total) {
+      return `<div class="page-head">
+        <div>
+          <h1 class="page-title">收藏夹</h1>
+          <p class="page-sub">收藏的题目都会收在这里，按来源题库分组</p>
+        </div>
+      </div>
+      <div class="card">${emptyState({
+        icon: 'star', title: '收藏夹还是空的',
+        desc: '在题库里点开任意题目，点「收藏」就会收进这里；之后可以只看收藏的题来练，也可以直接带进组卷。',
+        action: { href: '#/', label: '去题库挑几道' },
+      })}</div>`;
+    }
+
+    return `
+      <div id="fav-stage">
+      <div class="page-head">
+        <div>
+          <h1 class="page-title">收藏夹</h1>
+          <p class="page-sub">共 ${total} 道收藏题，分布在 ${groups.length} 个题库</p>
+        </div>
+        <div class="page-head-actions">
+          <a class="btn btn-ghost" href="#/papers/new?fav=1">${icon('list')} 全部带入组卷</a>
+          <a class="btn btn-primary" href="#/practice/__favorites">${icon('pen')} 全部练一遍</a>
+        </div>
+      </div>
+
+      <div class="stat-strip" style="border-top:0;padding-top:0;margin-top:0">
+        <div class="stat-item"><b>${total}</b><span>收藏题目</span></div>
+        <div class="stat-item"><b>${groups.length}</b><span>涉及题库</span></div>
+        <div class="stat-item"><b>${objective}</b><span>客观题</span></div>
+        <div class="stat-item"><b>${subjective}</b><span>主观题</span></div>
+      </div>
+
+      ${groups.map((g) => `
+        <div class="section-head">
+          <h2>${esc(g.bank.title)}<small>${g.list.length} 道收藏</small></h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <a class="btn btn-quiet btn-sm" href="#/papers/new?fav=${g.bank.id}">${icon('list')} 带入组卷</a>
+            <a class="btn btn-soft btn-sm" href="#/practice/${g.bank.id}?fav=1">${icon('pen')} 练这一组</a>
+          </div>
+        </div>
+        <div class="mistake-list">
+          ${g.list.map((q) => `<div class="mistake-row">
+            <div class="grow">
+              <div class="mtxt">${esc(q.stem)}</div>
+              <div class="msub">
+                <span class="chip ${typeChip(q.type)}">${typeLabel(q.type)}</span>
+                <span style="margin-left:6px">${esc(q.category || '未分类')}</span>
+              </div>
+            </div>
+            <button class="btn btn-quiet btn-sm" data-view="${q.id}">${icon('eye')} 查看</button>
+            <a class="btn btn-soft btn-sm" href="#/practice/${g.bank.id}?fav=1&q=${q.id}">${icon('pen')} 练这题</a>
+            <button class="icon-btn" data-unfav="${q.id}" title="取消收藏">${icon('x')}</button>
+          </div>`).join('')}
+        </div>
+      `).join('')}
+
+      <div class="guide-card mt-24">
+        <div class="g-orb">${icon('star')}</div>
+        <div><h4>关于收藏夹</h4><p>收藏跟随题目本身：题目或题库被删除后会自动从收藏夹移除；题库合并不会影响原有收藏。</p></div>
+      </div>
+      </div>`;
+  },
+
+  mount() {
+    const stage = Q('#fav-stage');
+    if (!stage) return;
+    stage.addEventListener('click', (e) => {
+      const view = e.target.closest('[data-view]');
+      if (view) {
+        const q = Store.questionById(view.dataset.view);
+        if (q) Views.showQuestion(q, Store.bankOfQuestion(q.id));
+        return;
+      }
+      const un = e.target.closest('[data-unfav]');
+      if (un) {
+        Store.favorites.toggle(un.dataset.unfav);
+        toast('已取消收藏', 'ok');
+        App.render();
+      }
+    });
+  },
+};
+
+/* ============================================================
    AI 调用记录与用量
    ============================================================ */
 Views.usage = {

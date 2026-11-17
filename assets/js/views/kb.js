@@ -85,6 +85,8 @@ Views.learn = {
         <a class="btn btn-primary" href="#/learn/import">${icon('plus')} 新建知识库</a>
       </div>
 
+      ${learnTabs('learn')}
+
       <div class="learn-stats">
         <div><b>${list.length}</b><span>知识库</span></div>
         <div><b>${totalItems}</b><span>知识点</span></div>

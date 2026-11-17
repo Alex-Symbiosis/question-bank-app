@@ -13,27 +13,49 @@ function practiceBack(bank) {
 Views.practice = {
   s: null,
   render(ctx) {
-    const bank = Store.banks.get(ctx.params.id) || Store.kbSessions.get(ctx.params.id);
+    const query = ctx.query || {};
+    const favAll = ctx.params.id === '__favorites';
+    let bank;
+    if (favAll) {
+      const qs = Store.favorites.list().map((qid) => Store.questionById(qid)).filter(Boolean);
+      bank = { id: '__favorites', title: '收藏练习', monogram: '收藏', accent: 'accent', questions: qs, back: '#/favorites' };
+    } else {
+      bank = Store.banks.get(ctx.params.id) || Store.kbSessions.get(ctx.params.id);
+    }
     if (!bank || !bank.questions.length) {
+      if (favAll) {
+        return `<div class="card">${emptyState({
+          icon: 'star', title: '收藏夹里还没有题目',
+          desc: '先在题库里收藏几道题，再回来一次性练完。',
+          action: { href: '#/favorites', label: '返回收藏夹' },
+        })}</div>`;
+      }
       return `<div class="card">${emptyState({ title: '没有可练习的题目', desc: '这个题库是空的，或已被删除。', action: { href: '#/', label: '返回题库' } })}</div>`;
     }
     let questions = bank.questions;
-    const query = ctx.query || {};
     const wrongOnly = !!query.wrong;
+    const favOnly = !favAll && !!query.fav;
     if (wrongOnly) {
       const ids = new Set(Store.wrong.list(bank.id).map((w) => w.qid));
       questions = questions.filter((q) => ids.has(q.id));
     }
+    if (favOnly) {
+      const ids = new Set(Store.favorites.list());
+      questions = questions.filter((q) => ids.has(q.id));
+    }
     if (query.q) questions = questions.filter((q) => q.id === query.q);
     if (!questions.length) {
+      const favScope = favAll || favOnly;
       return `<div class="card">${emptyState({
-        icon: 'check', title: '没有需要重练的题目',
-        desc: '这个题库的错题已经清空，或指定的题目不在错题本里。',
-        action: { href: '#/bank/' + bank.id, label: '返回题库' },
+        icon: favScope ? 'star' : 'check',
+        title: favScope ? '这个范围里没有收藏的题目' : '没有需要重练的题目',
+        desc: favScope ? '收藏可能已被取消，或题目已被删除。' : '这个题库的错题已经清空，或指定的题目不在错题本里。',
+        action: { href: favScope ? '#/favorites' : '#/bank/' + bank.id, label: favScope ? '返回收藏夹' : '返回题库' },
       })}</div>`;
     }
-    /* 续做：同一题库（或同一错题范围）保留上一次的作答现场 */
-    const pkey = query.q ? '' : bank.id + (wrongOnly ? ':wrong' : '');
+    /* 续做：同一题库（或同一错题/收藏范围）保留上一次的作答现场 */
+    const scope = favOnly ? ':fav' : wrongOnly ? ':wrong' : '';
+    const pkey = query.q ? '' : bank.id + scope;
     this.pkey = pkey;
     const saved = pkey ? Store.progress.get('practice', pkey) : null;
     let restored = null;
@@ -49,7 +71,8 @@ Views.practice = {
         restored = {
           bank, ids, index: clamp(Number(saved.index) || 0, 0, ids.length - 1),
           answers: pick(saved.answers), judged: pick(saved.judged),
-          revealed: pick(saved.revealed), grades: pick(saved.grades),
+          revealed: pick(saved.revealed), seen: pick(saved.seen || saved.revealed || {}), grades: pick(saved.grades),
+          gradeFail: pick(saved.gradeFail || {}), grading: {},
           startedAt: Number(saved.startedAt) || Date.now(), finished: false,
           prevDir: 1, autoAdded: {}, streak: Number(saved.streak) || 0,
           fromWrong: !!saved.fromWrong,
@@ -60,7 +83,7 @@ Views.practice = {
     this.resumed = !!restored && (restored.index > 0 || Object.keys(restored.judged).length > 0);
     this.s = restored || {
       bank, ids: questions.map((q) => q.id), index: 0,
-      answers: {}, judged: {}, revealed: {}, grades: {},
+      answers: {}, judged: {}, revealed: {}, seen: {}, grades: {}, gradeFail: {}, grading: {},
       startedAt: Date.now(), finished: false, prevDir: 1, autoAdded: {}, streak: 0,
       fromWrong: wrongOnly, orders: {},
     };
@@ -76,6 +99,9 @@ Views.practice = {
       if (!q) return;
       if (e.target.id === 'blank-input') this.s.answers[q.id] = e.target.value;
       if (e.target.id === 'short-input') this.s.answers[q.id] = e.target.value;
+      /* 简答 / 填空没有选项，提交按钮改为跟随输入内容启用 */
+      const submit = Q('[data-act="submit"]', stage);
+      if (submit) submit.disabled = !isAnswered(q.type, e.target.value);
       this.persistSoon();
     });
     document.addEventListener('keydown', this.onKey = (e) => {
@@ -105,7 +131,7 @@ Views.practice = {
   persist() {
     const s = this.s;
     if (!s || !this.pkey) return;
-    const hasWork = s.index > 0 || Object.keys(s.answers).length || Object.keys(s.judged).length || Object.keys(s.revealed).length;
+    const hasWork = s.index > 0 || Object.keys(s.answers).length || Object.keys(s.judged).length || Object.keys(s.revealed).length || Object.keys(s.seen || {}).length;
     if (s.finished || !hasWork) { Store.progress.clear('practice', this.pkey); return; }
     Store.progress.set('practice', this.pkey, {
       bankId: s.bank.id,
@@ -114,7 +140,9 @@ Views.practice = {
       answers: s.answers,
       judged: s.judged,
       revealed: s.revealed,
+      seen: s.seen || {},
       grades: s.grades,
+      gradeFail: s.gradeFail || {},
       orders: s.orders,
       streak: s.streak,
       startedAt: s.startedAt,
@@ -132,6 +160,23 @@ Views.practice = {
     if (!this.s) return null;
     const id = this.s.ids[this.s.index];
     return this.s.bank.questions.find((q) => q.id === id) || null;
+  },
+  /* 收藏合集等虚拟题库：统计与错题仍记到题目真正的来源题库 */
+  bankIdFor(q) {
+    const real = q ? Store.bankOfQuestion(q.id) : null;
+    return (real && real.id) || (this.s && this.s.bank ? this.s.bank.id : '');
+  },
+  /* 错题本只在「在错题本里重做并答对」时移出；普通练习中当场答对只保留记录 */
+  syncWrongbook(q, ok) {
+    const s = this.s;
+    if (!ok) {
+      Store.wrong.add(q.id, this.bankIdFor(q), AnsText(q, s.answers[q.id]));
+      return;
+    }
+    if (s.fromWrong && Store.wrong.has(q.id)) {
+      Store.wrong.remove(q.id);
+      toast('答对了，已从错题本移除', 'ok', 1800);
+    }
   },
   displayOptions(q) {
     const s = this.s;
@@ -163,8 +208,14 @@ Views.practice = {
     const q = this.current();
     if (!q) { this.finish(); return; }
     const idx = s.index;
-    const answered = s.judged[q.id];
+    /* judged 存的是对错布尔值：答题状态必须用「有没有这个键」判断，否则答错（false）会被当成没答 */
+    const answered = s.judged[q.id] !== undefined;
+    const isRight = s.judged[q.id] === true;
     const revealed = s.revealed[q.id];
+    const grade = s.grades[q.id];
+    const gradeFail = s.gradeFail ? s.gradeFail[q.id] : null;
+    const grading = !!(s.grading && s.grading[q.id]);
+    const seen = !!(s.seen && s.seen[q.id]);
     const ans = s.answers[q.id];
     const pct = Math.round(((idx + 1) / s.ids.length) * 100);
     const cardAnim = s.prevDir < 0 ? 'prev-anim' : '';
@@ -177,14 +228,14 @@ Views.practice = {
       const isCorrect = q.type === 'multiple'
         ? normalizeAnswer('multiple', q.answer).includes(o.key)
         : o.key === normalizeAnswer('single', q.answer);
-      if (selected && !answered && !revealed) cls += ' is-selected';
-      if (answered || revealed) {
+      if (selected && !answered) cls += ' is-selected';
+      if (answered) {
         cls += ' locked';
         if (isCorrect) cls += ' is-correct';
         else if (selected) cls += ' is-wrong';
         else cls += ' is-dim';
       }
-      const mark = (answered || revealed) && (isCorrect || selected)
+      const mark = answered && (isCorrect || selected)
         ? `<span class="marker show">${isCorrect ? icon('check') : icon('x')}</span>` : '';
       return `<div class="${cls}" data-opt="${o.key}"><span class="key">${o.key}</span><span class="txt">${esc(o.text)}</span>${mark}</div>`;
     }).join('');
@@ -195,8 +246,8 @@ Views.practice = {
           const selected = normalizeAnswer('judge', ans) === v;
           const isCorrect = normalizeAnswer('judge', q.answer) === v;
           let cls = 'opt';
-          if (selected && !answered && !revealed) cls += ' is-selected';
-          if (answered || revealed) {
+          if (selected && !answered) cls += ' is-selected';
+          if (answered) {
             cls += ' locked';
             if (isCorrect) cls += ' is-correct';
             else if (selected) cls += ' is-wrong';
@@ -218,21 +269,51 @@ Views.practice = {
         <input class="input" id="blank-input" placeholder="在这里输入…" value="${esc(ans || '')}" ${answered ? 'readonly' : ''} />
       </div>` : '';
 
+    /* AI 批改的可见状态：进行中 / 未完成（未配置、请求失败），成功结果在 feedback 里用 gradeHTML 展示 */
+    let aiPanelHTML = '';
+    if (grading) {
+      aiPanelHTML = `<div class="grade-card grade-card-pending" data-grade="pending">
+        <div class="grade-head">${icon('sparkle')}<span>AI 批改</span></div>
+        <div class="grade-pending"><span class="spinner"></span><span>正在批改你的作答，通常需要几秒…</span></div>
+      </div>`;
+    } else if (gradeFail) {
+      aiPanelHTML = `<div class="grade-card grade-card-fail" data-grade="fail">
+        <div class="grade-head">${icon('sparkle')}<span>AI 批改 · 未完成</span></div>
+        <div class="grade-msg">${esc(gradeFail.message || '批改没有完成')}</div>
+        ${gradeFail.hint ? `<div class="grade-hint">${esc(gradeFail.hint)}</div>` : ''}
+        <div class="ans-line">参考答案：<b>${esc(displayAnswer(q))}</b></div>
+        <div class="grade-actions">
+          ${gradeFail.retry === false ? '' : `<button class="btn btn-sm btn-soft" data-act="submit">重新批改</button>`}
+          ${gradeFail.missing ? `<a class="btn btn-sm btn-ghost" href="#/settings">去配置 AI</a>` : ''}
+          <button class="btn btn-sm btn-ghost" data-act="self-ok">算我答对</button>
+          <button class="btn btn-sm btn-ghost" data-act="self-bad">还需要再练</button>
+        </div>
+      </div>`;
+    }
+
     let feedbackHTML = '';
     if (answered) {
-      const isRight = s.judged[q.id];
-      const grade = s.grades[q.id];
+      const topLabel = q.type === 'short'
+        ? (grade ? 'AI 批改完成' : '已按自评记录')
+        : (isRight ? '答对了' : '这题答错了');
       feedbackHTML = `<div class="feedback ${isRight ? 'ok' : 'bad'}">
-        <div class="feedback-top">${icon(isRight ? 'check' : 'x')} ${isRight ? '答对了' : '这题答错了'}${q.type === 'short' && grade && grade.score != null ? ` · 得分 ${grade.score}/10` : ''}</div>
+        <div class="feedback-top">${icon(isRight ? 'check' : 'x')} ${topLabel}${q.type === 'short' && grade && grade.score != null ? ` · 得分 ${grade.score}/10` : ''}</div>
         <div class="ans-line">正确答案：<b>${esc(displayAnswer(q))}</b></div>
+        ${answered && isRight && Store.wrong.has(q.id) ? `<div class="small muted" style="margin-top:8px">${icon('brain')} 已再次答对；错题记录保留，去错题本重做并答对后才会移出。</div>` : ''}
         ${grade ? gradeHTML(grade) : ''}
         ${q.explanation ? `<div class="explain"><h4>${icon('book')} 解析</h4><div class="body">${esc(q.explanation)}</div></div>` : ''}
+        ${q.type === 'short' ? `<div class="redo-actions">
+          <button class="btn btn-sm btn-ghost" data-act="redo">${icon('refresh')} 重新作答</button>
+        </div>` : ''}
       </div>`;
-    } else if (revealed) {
-      feedbackHTML = `<div class="feedback info">
-        <div class="feedback-top">${icon('eye')} 已展示答案</div>
-        <div class="ans-line">正确答案：<b>${esc(displayAnswer(q))}</b></div>
-        ${q.explanation ? `<div class="explain"><h4>${icon('book')} 解析</h4><div class="body">${esc(q.explanation)}</div></div>` : ''}
+    }
+
+    /* 查看答案是临时展开的参考答案，不参与判分；收起后本题仍可正常作答 */
+    let answerPanelHTML = '';
+    if (revealed && !answered) {
+      answerPanelHTML = `<div class="reveal-answer">
+        <div class="row"><span class="small muted" style="min-width:64px">正确答案</span><span class="ans-big">${esc(displayAnswer(q) || '未填写')}</span></div>
+        ${q.explanation ? `<div class="explain" style="background:transparent;padding:12px 0 0"><h4>${icon('book')} 解析</h4><div class="body">${esc(q.explanation)}</div></div>` : ''}
         ${q.type === 'short' ? `<div class="redo-actions">
           <button class="btn btn-sm btn-ghost" data-act="self-ok">这题算我答对</button>
           <button class="btn btn-sm btn-ghost" data-act="self-bad">还需要再练</button>
@@ -240,7 +321,7 @@ Views.practice = {
       </div>`;
     }
 
-    const needConfirm = (q.type === 'multiple' || q.type === 'blank' || q.type === 'short') && !answered && !revealed;
+    const needConfirm = (q.type === 'multiple' || q.type === 'blank' || q.type === 'short') && !answered;
     const canSubmit = needConfirm && isAnswered(q.type, ans);
 
     Q('#practice-stage').innerHTML = `
@@ -268,20 +349,23 @@ Views.practice = {
           <span class="chip ${typeChip(q.type)}">${typeLabel(q.type)}</span>
           <span class="chip plain">${esc(q.category || '未分类')}</span>
           ${Store.favorites.has(q.id) ? `<span class="chip amber">已收藏</span>` : ''}
+          ${!answered && seen ? '<span class="chip plain">看过答案</span>' : ''}
         </div>
         <div class="q-stem">${esc(q.stem)}</div>
         ${q.type === 'multiple' ? '<div class="q-tip">多选题：选出所有正确选项后点击「确认答案」</div>' : ''}
         ${judgeOptions || `<div class="options">${optionHTML}</div>`}
         ${blankHTML}
         ${shortHTML}
+        ${answerPanelHTML}
+        ${aiPanelHTML}
         ${feedbackHTML}
 
         <div class="session-bar">
           <button class="btn btn-ghost btn-sm" data-act="prev" ${s.index === 0 ? 'disabled' : ''}>${icon('left')} 上一题</button>
-          ${!answered && !revealed ? `<button class="btn btn-ghost btn-sm" data-act="reveal">${icon('eye')} 查看答案</button>` : ''}
+          ${!answered ? `<button class="btn btn-ghost btn-sm" data-act="reveal">${icon('eye')} ${revealed ? '收起答案' : '查看答案'}</button>` : ''}
           <button class="btn btn-soft btn-sm" data-act="ai">${icon('sparkle')} 问 AI</button>
           <span class="spacer"></span>
-          ${needConfirm ? `<button class="btn btn-primary btn-sm" data-act="submit" ${canSubmit ? '' : 'disabled'}>${q.type === 'short' ? '提交并批改' : '确认答案'}</button>` : ''}
+          ${needConfirm && !gradeFail ? `<button class="btn btn-primary btn-sm" data-act="submit" ${canSubmit && !grading ? '' : 'disabled'}>${grading ? '批改中…' : q.type === 'short' ? '提交并批改' : '确认答案'}</button>` : ''}
           ${answered || revealed ? `<button class="btn btn-primary btn-sm" data-act="next">${s.index === s.ids.length - 1 ? '查看结果' : '下一题'} ${icon('right')}</button>` : ''}
         </div>
       </div>`;
@@ -299,7 +383,7 @@ Views.practice = {
   },
   choose(key) {
     const s = this.s, q = this.current();
-    if (!q || s.judged[q.id] || s.revealed[q.id]) return;
+    if (!q || s.judged[q.id] !== undefined) return;
     if (q.type === 'multiple') {
       const cur = Array.isArray(s.answers[q.id]) ? s.answers[q.id].slice() : [];
       const i = cur.indexOf(key);
@@ -318,13 +402,8 @@ Views.practice = {
     const ok = judgeObjective(q, ans);
     s.judged[q.id] = ok;
     this.trackStreak(ok);
-    Store.stats.record(s.bank.id, q.id, ok);
-    if (!ok) {
-      Store.wrong.add(q.id, s.bank.id, AnsText(q, ans));
-    } else if (Store.wrong.has(q.id)) {
-      Store.wrong.remove(q.id);
-      toast('答对了，已从错题本移除', 'ok', 1800);
-    }
+    Store.stats.record(this.bankIdFor(q), q.id, ok);
+    this.syncWrongbook(q, ok);
     if (ok && Store.settings.get().study.autoNext && q.type !== 'short') {
       setTimeout(() => { if (this.s === s && s.judged[q.id]) this.step(1); }, Store.settings.get().study.autoNextDelay);
     }
@@ -340,7 +419,14 @@ Views.practice = {
     if (act === 'prev') { this.step(-1); return; }
     if (act === 'next') { this.step(1); return; }
     if (act === 'restart') { this.restart(); return; }
-    if (act === 'reveal') { s.revealed[q.id] = true; this.paint(); return; }
+    if (act === 'reveal') {
+      s.revealed[q.id] = !s.revealed[q.id];
+      /* 「看过答案」是永久标记，收起只关掉面板，不清除记录 */
+      if (s.revealed[q.id]) { if (!s.seen) s.seen = {}; s.seen[q.id] = true; }
+      this.paint();
+      return;
+    }
+    if (act === 'redo') { this.redoShort(); return; }
     if (act === 'ai') { AIUI.open({ question: q, bank: s.bank, userAnswer: AnsText(q, s.answers[q.id]), preset: q.type === 'short' ? '看看我的作答' : '讲讲这道题' }); return; }
     if (act === 'submit') {
       if (q.type === 'short') { this.gradeShort(); return; }
@@ -349,10 +435,11 @@ Views.practice = {
     }
     if (act === 'self-ok' || act === 'self-bad') {
       const ok = act === 'self-ok';
+      if (s.gradeFail) delete s.gradeFail[q.id];
       s.judged[q.id] = ok;
       this.trackStreak(ok);
-      Store.stats.record(s.bank.id, q.id, ok);
-      if (ok) Store.wrong.remove(q.id); else Store.wrong.add(q.id, s.bank.id, AnsText(q, s.answers[q.id]));
+      Store.stats.record(this.bankIdFor(q), q.id, ok);
+      this.syncWrongbook(q, ok);
       this.paint();
       return;
     }
@@ -374,7 +461,10 @@ Views.practice = {
     s.answers = {};
     s.judged = {};
     s.revealed = {};
+    s.seen = {};
     s.grades = {};
+    s.gradeFail = {};
+    s.grading = {};
     s.streak = 0;
     s.startedAt = Date.now();
     s.finished = false;
@@ -383,31 +473,73 @@ Views.practice = {
     this.resumed = false;
     this.paint();
   },
+  /* 简答题重新作答：只清这道题的作答现场；已计入的统计与错题本不回退 */
+  redoShort() {
+    const s = this.s, q = this.current();
+    if (!s || !q || q.type !== 'short') return;
+    delete s.answers[q.id];
+    delete s.judged[q.id];
+    delete s.revealed[q.id];
+    delete s.grades[q.id];
+    if (s.gradeFail) delete s.gradeFail[q.id];
+    if (s.grading) delete s.grading[q.id];
+    this.paint();
+    const input = Q('#short-input');
+    if (input) { input.focus(); input.setSelectionRange(0, 0); }
+  },
   async gradeShort() {
     const s = this.s, q = this.current();
+    if (!s || !q) return;
     const ans = s.answers[q.id];
     if (!isAnswered(q.type, ans)) return;
+    if (s.grading && s.grading[q.id]) return; /* 防止重复提交 */
+    if (!s.gradeFail) s.gradeFail = {};
+    if (!s.grading) s.grading = {};
+    delete s.gradeFail[q.id];
+
+    /* 情况一：没配 AI，请求根本没有发出 */
     if (!AI.isConfigured()) {
-      toast('还没有配置 AI，先展示参考答案', 'bad');
-      s.revealed[q.id] = true;
+      s.gradeFail[q.id] = {
+        code: 'NO_KEY',
+        message: '还没有配置 AI，本次批改请求没有发出。',
+        hint: '到「设置 · AI 接入」填好 Base URL、API Key 与模型名后就能自动批改；现在可以先对照参考答案自行判定。',
+        retry: false,
+        missing: true,
+      };
       this.paint();
       return;
     }
-    const stage = Q('#practice-stage');
-    const btn = Q('[data-act="submit"]', stage);
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner on-primary"></span> AI 批改中'; }
+
+    /* 情况二：请求已发出，先给出「批改中」占位，避免用户以为没反应 */
+    s.grading[q.id] = true;
+    this.paint();
     try {
       const { grade } = await AI.gradeShort({ question: q, bank: s.bank, userAnswer: ans });
+      if (this.s !== s) return;
       s.grades[q.id] = grade;
       const ok = grade.score != null ? grade.score >= 6 : false;
       s.judged[q.id] = ok;
+      delete s.gradeFail[q.id];
       this.trackStreak(ok);
-      Store.stats.record(s.bank.id, q.id, ok);
-      if (ok) Store.wrong.remove(q.id); else Store.wrong.add(q.id, s.bank.id, ans);
-      this.paint();
+      Store.stats.record(this.bankIdFor(q), q.id, ok);
+      this.syncWrongbook(q, ok);
+      toast(grade.score != null ? `AI 批改完成：${grade.score}/10` : 'AI 批改完成（未给出分数）', ok ? 'ok' : 'bad', 2600);
     } catch (err) {
-      toast(err.friendly || err.message, 'bad', 5200);
-      if (btn) { btn.disabled = false; btn.textContent = '重新批改'; }
+      if (this.s !== s) return;
+      const noKey = !!err && err.code === 'NO_KEY';
+      /* 情况三：请求发出但失败，错误必须落在页面上，不能只弹一个会消失的 toast */
+      s.gradeFail[q.id] = {
+        code: (err && err.code) || 'ERROR',
+        message: noKey ? '还没有配置 AI，本次批改请求没有发出。' : `批改请求失败：${(err && err.message) || '未知错误'}`,
+        hint: (err && err.friendly) || '可以先对照参考答案自行判定，或稍后重试。',
+        retry: !noKey,
+        missing: noKey,
+      };
+    } finally {
+      if (this.s === s) {
+        delete s.grading[q.id];
+        this.paint();
+      }
     }
   },
   finish() {
@@ -455,7 +587,7 @@ Views.practice = {
     if (redo) redo.onclick = () => {
       this.pkey = s.bank.id + ':redo';
       this.resumed = false;
-      this.s = { bank: s.bank, ids: wrongIds, index: 0, answers: {}, judged: {}, revealed: {}, grades: {}, startedAt: Date.now(), finished: false, prevDir: 1, orders: {}, streak: 0, fromWrong: true };
+      this.s = { bank: s.bank, ids: wrongIds, index: 0, answers: {}, judged: {}, revealed: {}, seen: {}, grades: {}, gradeFail: {}, grading: {}, startedAt: Date.now(), finished: false, prevDir: 1, orders: {}, streak: 0, fromWrong: true };
       this.paint();
     };
   },
@@ -574,9 +706,10 @@ function gradeHTML(grade) {
   if (!grade) return '';
   const hit = (grade.hit || []).map((t) => `<span class="chip ok">${esc(t)}</span>`).join('');
   const miss = (grade.miss || []).map((t) => `<span class="chip bad">${esc(t)}</span>`).join('');
-  return `<div class="grade-card">
+  return `<div class="grade-card" data-grade="ok">
+    <div class="grade-head">${icon('sparkle')}<span>AI 批改</span>${grade.parseError ? '<span class="chip plain">未按格式返回，已展示原文</span>' : ''}</div>
     <div class="between">
-      <div class="grade-score"><b>${grade.score == null ? '—' : grade.score}</b><span>/ 10 分 · AI 批改</span></div>
+      <div class="grade-score"><b>${grade.score == null ? '—' : grade.score}</b><span>/ 10 分</span></div>
       <span class="chip plain">${esc(grade.verdict || '')}</span>
     </div>
     ${grade.comment ? `<div class="grade-comment">${esc(grade.comment)}</div>` : ''}

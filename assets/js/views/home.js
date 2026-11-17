@@ -14,10 +14,10 @@ Views.home = {
       return Object.keys(m).slice(0, 3).map((t) => `<span class="chip">${typeLabel(t)} ${m[t]}</span>`).join('');
     };
 
-    const cards = banks.map((b, i) => {
+    const cards = banks.map((b) => {
       const mastered = Store.stats.masteredCount(b.id);
       const pct = b.questions.length ? Math.round((mastered / b.questions.length) * 100) : 0;
-      return `<a class="bank-card" href="#/bank/${b.id}" style="${accentStyle(b.accent)};--i:${i}">
+      return `<a class="bank-card" href="#/bank/${b.id}" style="${accentStyle(b.accent)}">
         <div class="bank-card-top">
           <div class="bank-emoji">${esc(b.monogram || '题库')}</div>
           <div class="grow">
@@ -74,7 +74,14 @@ Views.home = {
 
       <div class="section-head">
         <h2>我的题库<small>${banks.length} 个</small></h2>
-        ${banks.length ? `<div class="row" style="gap:8px">
+        ${banks.length ? `<div class="home-tools">
+          <div class="home-search" id="home-search">
+            ${icon('search')}
+            <input id="home-search-input" placeholder="搜索题库、题干或知识点…" autocomplete="off" aria-label="搜索题库或题目" />
+            <button class="search-clear" id="home-search-clear" type="button" title="清除" hidden>${icon('x')}</button>
+            <kbd>/</kbd>
+            <div class="search-pop" id="search-pop" hidden></div>
+          </div>
           ${banks.length >= 2 ? `<button class="btn btn-quiet btn-sm" id="bank-merge">${icon('layers')} 合并题库</button>` : ''}
           <a class="btn btn-quiet btn-sm" href="#/import">${icon('plus')} 新建</a>
         </div>` : ''}
@@ -115,6 +122,107 @@ Views.home = {
   mount() {
     const btn = Q('#bank-merge');
     if (btn) btn.onclick = () => this.openMerge();
+    this.bindSearch();
+  },
+
+  destroy() {
+    if (this._searchDocKey) document.removeEventListener('keydown', this._searchDocKey);
+    if (this._searchDocClick) document.removeEventListener('mousedown', this._searchDocClick);
+    this._searchDocKey = null;
+    this._searchDocClick = null;
+  },
+
+  bindSearch() {
+    const wrap = Q('#home-search');
+    const input = Q('#home-search-input');
+    const pop = Q('#search-pop');
+    const clear = Q('#home-search-clear');
+    if (!wrap || !input || !pop) return;
+    let active = -1;
+
+    const close = () => { pop.hidden = true; active = -1; };
+    const syncClear = () => { if (clear) clear.hidden = !input.value; };
+
+    const draw = () => {
+      const raw = input.value.trim();
+      const kw = raw.toLowerCase();
+      if (!kw) { close(); return; }
+      const banks = Store.banks.list();
+      const bankHits = banks.filter((b) =>
+        [b.title, b.subject, b.description].join(' ').toLowerCase().includes(kw)).slice(0, 4);
+      const qHits = [];
+      banks.forEach((b) => {
+        if (qHits.length >= 10) return;
+        b.questions.forEach((q) => {
+          if (qHits.length >= 10) return;
+          const hay = [q.stem, q.category, (q.options || []).map((o) => o.text).join(' '), q.explanation || ''].join(' ').toLowerCase();
+          if (hay.includes(kw)) qHits.push({ q, bank: b });
+        });
+      });
+      if (!bankHits.length && !qHits.length) {
+        pop.innerHTML = `<div class="search-empty">没有找到「${esc(raw)}」</div>`;
+        pop.hidden = false;
+        return;
+      }
+      pop.innerHTML = `
+        ${bankHits.length ? `<div class="search-sec">题库</div>${bankHits.map((b) => `<a class="search-item" href="#/bank/${b.id}" data-item>
+          <span class="si-ico">${icon('book')}</span>
+          <span class="si-main"><b>${esc(b.title)}</b><small>${b.questions.length} 题 · ${esc(b.subject || '未分类')}</small></span>
+          <span class="si-kind">题库</span>
+        </a>`).join('')}` : ''}
+        ${qHits.length ? `<div class="search-sec">题目</div>${qHits.map(({ q, bank }) => `<a class="search-item" href="#/bank/${bank.id}?q=${q.id}" data-item>
+          <span class="si-ico">${icon('search')}</span>
+          <span class="si-main"><b>${esc(q.stem)}</b><small>${esc(bank.title)} · ${typeLabel(q.type)}</small></span>
+          <span class="si-kind">题目</span>
+        </a>`).join('')}` : ''}`;
+      pop.hidden = false;
+      active = -1;
+    };
+
+    input.addEventListener('input', () => { syncClear(); });
+    input.addEventListener('input', debounce(draw, 120));
+    input.addEventListener('focus', draw);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { input.value = ''; syncClear(); close(); input.blur(); return; }
+      const items = QA('[data-item]', pop);
+      if (!items.length) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        active = e.key === 'ArrowDown' ? (active + 1) % items.length : (active - 1 + items.length) % items.length;
+        items.forEach((el, i) => el.classList.toggle('active', i === active));
+        items[active].scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        (items[active] || items[0]).click();
+      }
+    });
+    pop.addEventListener('click', () => { input.value = ''; syncClear(); close(); });
+    if (clear) clear.onclick = () => {
+      input.value = '';
+      syncClear();
+      close();
+      input.focus();
+    };
+
+    this._searchDocKey = (e) => {
+      const el = document.activeElement;
+      const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      if (!typing && (e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'))) {
+        e.preventDefault();
+        input.focus();
+        input.select();
+      } else if (e.key === 'Escape') {
+        input.value = '';
+        syncClear();
+        close();
+        if (document.activeElement === input) input.blur();
+      }
+    };
+    this._searchDocClick = (e) => { if (!wrap.contains(e.target)) close(); };
+    document.addEventListener('keydown', this._searchDocKey);
+    document.addEventListener('mousedown', this._searchDocClick);
   },
 
   openMerge() {

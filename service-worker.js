@@ -1,5 +1,5 @@
 /* Service Worker — 让题库应用真正离线可用 */
-const CACHE_NAME = 'question-bank-v1';
+const CACHE_NAME = 'question-bank-v14';
 const ASSETS = [
   './',
   './index.html',
@@ -14,6 +14,8 @@ const ASSETS = [
   './assets/js/mentor.js',
   './assets/js/pdf-import.js',
   './assets/js/seed.js',
+  './assets/js/splash.js',
+  './assets/js/glow.js',
   './assets/js/views/home.js',
   './assets/js/views/bank.js',
   './assets/js/views/practice.js',
@@ -23,6 +25,7 @@ const ASSETS = [
   './assets/js/views/kb.js',
   './assets/js/views/settings.js',
   './assets/js/views/misc.js',
+  './assets/js/views/stats.js',
   './vendor/pdf.min.js',
   './vendor/pdf.worker.min.js',
   './icons/icon.svg',

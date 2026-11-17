@@ -573,6 +573,21 @@ Views.settings = {
           <label class="switch"><input type="checkbox" id="st-timer" ${st.showTimer !== false ? 'checked' : ''}/><span class="track"></span>考试中显示倒计时（关闭后仍会到时自动交卷）</label>
         </div>
       </div>
+      <div class="card set-group">
+        <h3>${icon('sparkle')} 仪式感</h3>
+        <p class="sub">开启时，每次打开都会走封面掀开与今日问候；关闭后直接进入界面开始用，不留过渡。</p>
+        <div class="ritual-row">
+          <div class="ritual-main">
+            <strong>启动仪式</strong>
+            <span>${st.splash !== false ? '封面、问候卡与太阳系依次出现' : '已关闭，打开即进入界面'}</span>
+          </div>
+          <button type="button" class="ritual-pill ${st.splash !== false ? 'on' : ''}" id="st-ritual"
+            role="switch" aria-checked="${st.splash !== false}" aria-label="仪式感">
+            <span class="knob" aria-hidden="true"></span>
+          </button>
+        </div>
+        <p class="small muted mt-12" style="line-height:1.9">系统开启「减少动态效果」时也会自动跳过。</p>
+      </div>
       <div class="guide-card">
         <div class="g-orb">${icon('clock')}</div>
         <div><h4>关于计时</h4><p>考试一旦开始就按真实时间倒计时，退出页面也不会暂停；未交卷的考试会保存在本地，下次可以继续。</p></div>
@@ -585,6 +600,14 @@ Views.settings = {
     Q('#st-wrongauto').onchange = (e) => Store.settings.patch('study', { wrongAutoAdd: e.target.checked });
     Q('#st-shuffle').onchange = (e) => Store.settings.patch('study', { shuffleOptions: e.target.checked });
     Q('#st-timer').onchange = (e) => Store.settings.patch('study', { showTimer: e.target.checked });
+    Q('#st-ritual').onclick = () => {
+      const on = (Store.settings.get().study || {}).splash !== false;
+      const next = !on;
+      Store.settings.patch('study', { splash: next });
+      if (!next && window.Splash && Splash.off) Splash.off();
+      this.paint();
+      toast(next ? '仪式感已开启，下次打开时播放' : '仪式感已关闭，之后直接进入界面', 'ok');
+    };
   },
 
   /* ---------------- 数据 ---------------- */
