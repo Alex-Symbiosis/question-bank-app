@@ -636,6 +636,8 @@
   display: flex;
   gap: 40px;
   padding: 20px 26px;
+  /* 与学习数据的 .kpi-grid 同一节奏：子导航之后的第一个内容块统一留出顶部间距 */
+  margin-top: clamp(24px, 2.2vw, 26px);
   margin-bottom: 26px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg, 18px);
