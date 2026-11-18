@@ -45,7 +45,8 @@ Views.stats = {
     </svg>`;
   },
 
-  render() {
+  /* 学习数据区块：嵌在「我的题库」页里，KPI + 趋势 + 分布明细 */
+  bodyHTML() {
     const today = Store.stats.range(1);
     const week = Store.stats.range(7);
     const series = Store.stats.series(7);
@@ -95,17 +96,6 @@ Views.stats = {
     </div>`;
 
     return `
-      <div class="page-head">
-        <div>
-          <h1 class="page-title">学习数据</h1>
-          <p class="page-sub">答题量、正确率与错题分布，都来自你本地的作答记录。</p>
-        </div>
-        <div class="page-head-actions">
-          <a class="btn btn-ghost" href="#/learn">${icon('layers')} 学习频道</a>
-        </div>
-      </div>
-      ${learnTabs('stats')}
-
       <div class="kpi-grid">
         ${kpi('今日答题', today.answered, `正确率 ${accText(today.accuracy)}`)}
         ${kpi('近 7 天', week.answered, `正确率 ${accText(week.accuracy)}`)}
@@ -169,6 +159,4 @@ Views.stats = {
         <div><h4>下一步建议</h4><p>${esc(tip)}</p></div>
       </div>`;
   },
-
-  mount() { },
 };

@@ -76,7 +76,12 @@ Views.settings = {
             <h3>${icon('sparkle')} AI 接入</h3>
             <p class="sub" style="margin-bottom:0">所有 AI 能力共用这一条配置：题目讲解、思路提示、简答批改、题库结构化。</p>
           </div>
-          <span class="key-state ${configured ? 'on' : ''}"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:${configured ? 'var(--ok)' : '#C9C7BD'}"></span>${configured ? '已配置' : '未配置'}</span>
+          <div class="ai-card-side">
+            <span class="key-state ${configured ? 'on' : ''}"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:${configured ? 'var(--ok)' : '#C9C7BD'}"></span>${configured ? '已配置' : '未配置'}</span>
+            <button type="button" class="ai-help" id="ai-help" title="如何配置 AI 接入">
+              <span class="ai-help-mark">?</span><span class="ai-help-text">如何配置</span>
+            </button>
+          </div>
         </div>
 
         <div class="preset-chips mt-16 mb-16">
@@ -89,10 +94,12 @@ Views.settings = {
             <input class="input" id="set-base" value="${esc(api.baseUrl || '')}" placeholder="https://api.openai.com/v1" spellcheck="false" />
           </div>
           <div class="field span2">
-            <label>API Key <span class="hint">只写入本机 localStorage，不会上传到别处</span></label>
+            <label>API Key <span class="hint">只写入本机 localStorage；保存后只显示首尾，完整 Key 不再回显</span></label>
             <div class="input-group">
-              <input class="input" id="set-key" type="password" value="${esc(api.apiKey || '')}" placeholder="sk-..." spellcheck="false" autocomplete="off" />
-              <button class="btn btn-ghost" type="button" id="set-key-eye">${icon('eye')} 显示</button>
+              <input class="input ${api.apiKey ? 'is-masked' : ''}" id="set-key" type="${api.apiKey ? 'text' : 'password'}"
+                value="${api.apiKey ? esc(this.maskKey(api.apiKey)) : ''}" ${api.apiKey ? 'readonly' : ''}
+                placeholder="sk-..." spellcheck="false" autocomplete="off" />
+              <button class="btn btn-ghost" type="button" id="set-key-change" ${api.apiKey ? '' : 'hidden'}>更换</button>
             </div>
           </div>
           <div class="field">
@@ -187,20 +194,133 @@ Views.settings = {
       </div>`;
   },
 
+  openHelp() {
+    const rows = this.PRESETS.map((p) => `<li><b>${esc(p.name)}</b>　地址 <code>${esc(p.baseUrl)}</code>　模型 <code>${esc(p.model)}</code></li>`).join('');
+    openModal({
+      title: '如何配置 AI 接入',
+      sub: '一共三样信息：Base URL、API Key、模型名。填完点「测试连接」验证。',
+      wide: true,
+      body: `
+        <div class="ai-guide">
+          <h4>一、先选一个服务商</h4>
+          <p>点卡片上的预设按钮会自动填好地址和模型，只剩下 Key 需要自己申请。目前支持的预设：</p>
+          <ul>${rows}</ul>
+          <p class="small muted">Ollama 本地不需要真实 Key，Key 随便填 <code>ollama</code> 即可；但要先在电脑上把 Ollama 跑起来。</p>
+
+          <h4>二、去哪里申请 Key</h4>
+          <ul>
+            <li><b>OpenAI</b>：platform.openai.com → API keys → Create new secret key，复制 <code>sk-</code> 开头的一整串（只显示一次）。</li>
+            <li><b>DeepSeek</b>：platform.deepseek.com → API keys → 创建，复制 <code>sk-</code> 开头的 Key，国内可直接充值。</li>
+            <li><b>Moonshot</b>：platform.moonshot.cn → API Key 管理 → 新建。</li>
+            <li><b>通义千问</b>：阿里云百炼 bailian.console.aliyun.com → API-KEY 管理，开通后新建（新用户有免费额度）。</li>
+            <li><b>硅基流动</b>：cloud.siliconflow.cn → 账户设置 → API 密钥，新账号通常送一点额度。</li>
+          </ul>
+
+          <h4>三、Base URL 填什么</h4>
+          <p>填服务商给的「OpenAI 兼容」地址，一般以 <code>/v1</code> 结尾，不要再自己拼 <code>/chat/completions</code>。上面预设里列出的就是可以直接用的地址。</p>
+
+          <h4>四、模型名填什么</h4>
+          <p>模型名必须和服务商后台的完全一致，大小写、斜杠都算数。预设会带上常用型号；想换型号时，去服务商的模型列表复制准确名称，比如 <code>gpt-4o-mini</code>、<code>deepseek-chat</code>、<code>qwen-plus</code>。</p>
+
+          <h4>五、点「测试连接」应该看到什么</h4>
+          <ul>
+            <li>按钮先变成「测试中」，随后出现绿色标签 <b>连接成功 · 800ms</b> 之类，后面跟着模型回的一句话。看到这个就说明配置可用。</li>
+            <li>显示红色 <b>连接失败</b> 时会带一句原因，对照下一节排查即可。</li>
+          </ul>
+
+          <h4>六、常见报错怎么判断</h4>
+          <ul>
+            <li><b>401 / invalid_api_key / Unauthorized</b>：Key 错了、过期或被撤销。重新复制一次，注意别把前后空格带进去。</li>
+            <li><b>404 / model_not_found / Not Found</b>：两种可能——Base URL 少了或多了 <code>/v1</code>；或者模型名写了这个账号没有的型号。</li>
+            <li><b>403 / insufficient_quota / 余额不足</b>：账号没有可用额度，去服务商后台充值，或换一个带免费额度的模型。</li>
+            <li><b>429 / rate_limit</b>：请求太密被限流，等一会儿再点测试；持续出现说明额度或并发受限。</li>
+            <li><b>Failed to fetch / 网络错误</b>：地址根本连不上。检查 Base URL 是否写错、本地 Ollama 是否在运行、是否需要代理。</li>
+            <li><b>超时 / 长时间无响应</b>：网络慢或服务商不可达，换网络或换国内服务商。</li>
+          </ul>
+
+          <h4>七、费用与安全</h4>
+          <ul>
+            <li>费用按 token 计费，一次讲解通常几百到几千 token。<code>gpt-4o-mini</code>、<code>deepseek-chat</code> 这类小模型大概每百万 token 几元人民币量级；<code>qwen-plus</code> 和硅基流动的小模型常有免费额度；Ollama 本地免费，但吃电脑性能。具体以各家官网价目为准。</li>
+            <li>Key 只保存在这台设备的浏览器 localStorage 里，不会上传到别处；保存后界面只显示首尾几位，导出的备份也不再写入 Key。</li>
+            <li>公用电脑用完建议回到这里把 Key 删掉再保存，或清除站点数据；也不要把 Key 截图发出去。</li>
+          </ul>
+        </div>`,
+      actions: [{ label: '知道了', kind: 'primary' }],
+    });
+  },
+
+  /* 正中间遮 10 位、用 10 个点表示；其余照常露出，整体长度与真实 Key 一致，短 Key 少露几位 */
+  maskKey(key) {
+    const s = String(key || '');
+    if (!s) return '';
+    const keep = Math.max(0, s.length - 10);
+    const head = Math.ceil(keep / 2);
+    const tail = keep - head;
+    return s.slice(0, head) + '••••••••••' + (tail > 0 ? s.slice(-tail) : '');
+  },
+
+  /* 已保存状态只显示打码值；聚焦或点「更换」才清空输入，供重新粘贴 */
+  bindKeyField() {
+    const input = Q('#set-key');
+    if (!input) return;
+    const btn = () => Q('#set-key-change');
+    const enterEdit = () => {
+      if (!input.classList.contains('is-masked')) return;
+      input.classList.remove('is-masked');
+      input.readOnly = false;
+      input.type = 'password';
+      input.value = '';
+      input.placeholder = '粘贴新的 API Key（留空保存则保留原 Key）';
+      const b = btn();
+      if (b) { b.hidden = false; b.textContent = '取消'; }
+      input.focus();
+    };
+    const backToMask = () => {
+      const key = (Store.settings.api() || {}).apiKey || '';
+      input.classList.add('is-masked');
+      input.readOnly = true;
+      input.type = 'text';
+      input.value = this.maskKey(key);
+      input.placeholder = 'sk-...';
+      const b = btn();
+      if (b) { b.hidden = !key; b.textContent = '更换'; }
+      input.blur();
+    };
+    input.addEventListener('focus', enterEdit);
+    input.addEventListener('click', enterEdit);
+    const b = btn();
+    if (b) b.onclick = () => {
+      if (input.classList.contains('is-masked')) enterEdit();
+      else backToMask();
+    };
+  },
+
+  /* 保存后回到打码展示，输入框里不保留明文 */
+  refreshKeyField() {
+    const input = Q('#set-key');
+    if (!input) return;
+    const key = (Store.settings.api() || {}).apiKey || '';
+    input.classList.toggle('is-masked', !!key);
+    input.readOnly = !!key;
+    input.type = key ? 'text' : 'password';
+    input.value = key ? this.maskKey(key) : '';
+    input.placeholder = 'sk-...';
+    input.blur();
+    const b = Q('#set-key-change');
+    if (b) { b.hidden = !key; b.textContent = '更换'; }
+  },
+
   bindAI() {
     const api = Store.settings.api();
+    const helpBtn = Q('#ai-help');
+    if (helpBtn) helpBtn.onclick = () => this.openHelp();
+    this.bindKeyField();
     QA('[data-preset]').forEach((b) => {
       b.onclick = () => {
         Q('#set-base').value = b.dataset.base;
         Q('#set-model').value = b.dataset.model;
       };
     });
-    Q('#set-key-eye').onclick = () => {
-      const el = Q('#set-key');
-      const show = el.type === 'password';
-      el.type = show ? 'text' : 'password';
-      Q('#set-key-eye').innerHTML = show ? icon('eye') + ' 隐藏' : icon('eye') + ' 显示';
-    };
     Q('#ai-style').addEventListener('click', (e) => {
       const b = e.target.closest('[data-style]');
       if (!b) return;
@@ -437,13 +557,17 @@ Views.settings = {
 
   saveAI() {
     const baseUrl = Q('#set-base').value.trim();
-    const apiKey = Q('#set-key').value.trim();
+    const keyInput = Q('#set-key');
+    const editing = !!keyInput && !keyInput.classList.contains('is-masked');
+    const currentKey = (Store.settings.api() || {}).apiKey || '';
+    const apiKey = editing ? (keyInput.value.trim() || currentKey) : currentKey;
     const model = Q('#set-model').value.trim();
     const temperature = clamp(Number(Q('#set-temp').value) || 0, 0, 2);
     const stream = Q('#set-stream').checked;
     if (baseUrl && !/^https?:\/\//i.test(baseUrl)) { toast('Base URL 需要以 http:// 或 https:// 开头', 'bad'); return false; }
     if (!baseUrl || !apiKey || !model) { toast('Base URL、API Key 与模型名都需要填写', 'bad'); return false; }
     Store.settings.patch('api', { baseUrl, apiKey, model, temperature, stream });
+    this.refreshKeyField();
     App.updateChrome();
     return true;
   },
@@ -632,7 +756,7 @@ Views.settings = {
           <span class="grow"></span>
           <button class="btn btn-danger" id="data-reset">${icon('trash')} 清空数据</button>
         </div>
-        <p class="small muted mt-16" style="line-height:1.9">导出的 JSON 包含题库、错题、考试记录与设置（含 API Key）。如果要把备份发给别人，请先在设置里清空密钥。</p>
+        <p class="small muted mt-16" style="line-height:1.9">导出的 JSON 包含题库、错题、考试记录与设置，但不含 API Key；换设备或换浏览器后需要重新填写一次 Key。</p>
       </div>
 
       <div class="card set-group">

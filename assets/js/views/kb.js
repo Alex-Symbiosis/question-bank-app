@@ -78,14 +78,11 @@ Views.learn = {
       <div id="learn-page">
       <div class="page-head">
         <div>
-          <div class="learn-kicker">学习频道</div>
           <h1 class="page-title">智库</h1>
           <p class="page-sub">把资料拆成一条条知识点；需要练习时，让 AI 直接根据知识库出题。</p>
         </div>
         <a class="btn btn-primary" href="#/learn/import">${icon('plus')} 新建知识库</a>
       </div>
-
-      ${learnTabs('learn')}
 
       <div class="learn-stats">
         <div><b>${list.length}</b><span>知识库</span></div>

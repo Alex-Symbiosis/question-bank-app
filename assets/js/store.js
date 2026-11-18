@@ -886,10 +886,13 @@ window.Store = (function () {
 
   /* ---------- 备份 ---------- */
   function exportAll() {
+    /* 备份不写入明文 Key：Key 只留在本机，换设备后需要重新填写 */
+    const data = JSON.parse(JSON.stringify(state));
+    if (data.settings && data.settings.api) data.settings.api.apiKey = '';
     return JSON.stringify({
       app: 'quizapp',
       exportedAt: Date.now(),
-      data: state,
+      data,
     }, null, 2);
   }
 
@@ -897,8 +900,10 @@ window.Store = (function () {
     const parsed = typeof json === 'string' ? JSON.parse(json) : json;
     const data = parsed && parsed.data ? parsed.data : parsed;
     if (!data || !Array.isArray(data.banks)) throw new Error('备份文件格式不正确');
+    const keepKey = (state.settings && state.settings.api ? state.settings.api.apiKey : '') || '';
     state = Object.assign(defaultState(), data);
     state.settings = mergeSettings(data.settings);
+    if (state.settings.api && !state.settings.api.apiKey && keepKey) state.settings.api.apiKey = keepKey;
     state.mentor = normalizeMentor(data.mentor);
     state.progress = normalizeProgress(data.progress);
     normalizeFavorites();

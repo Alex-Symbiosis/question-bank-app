@@ -72,9 +72,11 @@ Views.home = {
         </div>
       </section>
 
-      <div class="section-head">
+      <div class="section-head home-head">
         <h2>我的题库<small>${banks.length} 个</small></h2>
         ${banks.length ? `<div class="home-tools">
+          ${banks.length >= 2 ? `<button class="btn btn-quiet btn-sm" id="bank-merge">${icon('layers')} 合并题库</button>` : ''}
+          <a class="btn btn-quiet btn-sm" href="#/import">${icon('plus')} 新建</a>
           <div class="home-search" id="home-search">
             ${icon('search')}
             <input id="home-search-input" placeholder="搜索题库、题干或知识点…" autocomplete="off" aria-label="搜索题库或题目" />
@@ -82,8 +84,6 @@ Views.home = {
             <kbd>/</kbd>
             <div class="search-pop" id="search-pop" hidden></div>
           </div>
-          ${banks.length >= 2 ? `<button class="btn btn-quiet btn-sm" id="bank-merge">${icon('layers')} 合并题库</button>` : ''}
-          <a class="btn btn-quiet btn-sm" href="#/import">${icon('plus')} 新建</a>
         </div>` : ''}
       </div>
 
@@ -103,6 +103,11 @@ Views.home = {
         action: { href: '#/import', label: '导入第一份题库' },
       })}
 
+      <section class="home-stats" id="stats-block">
+        <div class="section-head"><h2>学习数据<small>近 7 天</small></h2></div>
+        ${Views.stats.bodyHTML()}
+      </section>
+
       <div class="section-head"><h2>使用方式</h2></div>
       <div class="grid-3">
         <div class="guide-card">
@@ -119,10 +124,15 @@ Views.home = {
         </div>
       </div>`;
   },
-  mount() {
+  mount(root, ctx) {
     const btn = Q('#bank-merge');
     if (btn) btn.onclick = () => this.openMerge();
     this.bindSearch();
+    /* 旧链接 #/stats 会重定向到 #/?section=stats，落到学习数据区块 */
+    if (ctx && ctx.query && ctx.query.section === 'stats') {
+      const block = Q('#stats-block');
+      if (block) setTimeout(() => block.scrollIntoView({ block: 'start', behavior: 'auto' }), 80);
+    }
   },
 
   destroy() {

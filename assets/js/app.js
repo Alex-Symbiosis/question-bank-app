@@ -1,24 +1,6 @@
 /* ============================================================
    应用外壳：hash 路由 + AI 抽屉 + 全局状态
    ============================================================ */
-/* 学习分组：二级导航配置。以后往学习频道里加东西，只改这里即可 */
-window.NAV_GROUPS = [
-  {
-    id: 'learn',
-    label: '学习',
-    items: [
-      { nav: 'learn', href: '#/learn', label: '学习频道' },
-      { nav: 'stats', href: '#/stats', label: '学习数据' },
-    ],
-  },
-];
-
-window.learnTabs = function (active) {
-  const g = (window.NAV_GROUPS || []).find((x) => x.id === 'learn');
-  if (!g) return '';
-  return `<div class="learn-switch">${g.items.map((it) =>
-    `<a href="${it.href}" class="${active === it.nav ? 'active' : ''}">${esc(it.label)}</a>`).join('')}</div>`;
-};
 
 window.App = {
   currentView: null,
@@ -41,7 +23,6 @@ window.App = {
     { re: /^\/papers$/, name: 'papers', view: () => Views.papers, nav: 'papers' },
     { re: /^\/learn$/, name: 'learn', view: () => Views.learn, nav: 'learn' },
     { re: /^\/learn\/import$/, name: 'kbImport', view: () => Views.kbImport, nav: 'learn' },
-    { re: /^\/stats$/, name: 'stats', view: () => Views.stats, nav: 'stats' },
     { re: /^\/kb\/([^/]+)$/, name: 'kb', view: () => Views.kb, nav: 'learn', keys: ['id'] },
     { re: /^\/kb\/([^/]+)\/focus$/, name: 'kbFocus', view: () => Views.kbFocus, nav: 'learn', keys: ['id'] },
     { re: /^\/papers\/new$/, name: 'paperNew', view: () => Views.paperNew, nav: 'papers' },
@@ -79,6 +60,11 @@ window.App = {
 
   render() {
     const { path, query } = this.parse();
+    /* 旧链接：学习数据已并入「我的题库」，落到首页的学习数据区块 */
+    if (path === '/stats') {
+      location.replace('#/?section=stats');
+      return;
+    }
     const hit = this.resolve(path);
     const root = Q('#view');
     if (!root) return;
@@ -153,10 +139,8 @@ window.App = {
       badge.hidden = !total;
     }
     if (nav) {
-      /* 学习数据属于「学习」入口：侧栏和移动端都保持学习项高亮 */
-      const groupNav = nav === 'stats' ? 'learn' : nav;
-      QA('#main-nav [data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === groupNav));
-      QA('#tabbar [data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === groupNav));
+      QA('#main-nav [data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav));
+      QA('#tabbar [data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav));
     }
   },
 };
