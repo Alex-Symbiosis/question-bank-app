@@ -1,5 +1,5 @@
 /* Service Worker — 让题库应用真正离线可用 */
-const CACHE_NAME = 'question-bank-v18';
+const CACHE_NAME = 'question-bank-v19';
 const ASSETS = [
   './',
   './index.html',
